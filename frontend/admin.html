@@ -1,0 +1,346 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Canteen | Admin</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #0b1020;
+      color: #eef2ff;
+      min-height: 100vh;
+    }
+    header {
+      padding: 22px 6%;
+      background: #121a2e;
+      border-bottom: 1px solid #26324c;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    h1 { margin: 0; font-size: 24px; }
+    .muted { color: #a6b2ca; }
+    main { max-width: 1100px; margin: 35px auto; padding: 0 18px; }
+    .panel {
+      background: #121a2e;
+      border: 1px solid #26324c;
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 22px;
+    }
+    .login-panel { max-width: 430px; margin: 55px auto; }
+    h2 { margin-top: 0; }
+    label { display: block; margin: 15px 0 7px; color: #cbd5e1; }
+    input {
+      width: 100%;
+      padding: 13px;
+      border: 1px solid #34425e;
+      border-radius: 9px;
+      background: #0b1020;
+      color: white;
+      font-size: 16px;
+    }
+    button {
+      padding: 11px 15px;
+      border: 0;
+      border-radius: 9px;
+      background: #6366f1;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    button:hover { opacity: .88; }
+    .primary { width: 100%; margin-top: 20px; padding: 13px; }
+    .logout { background: #334155; }
+    .message { margin-top: 14px; color: #fca5a5; overflow-wrap: anywhere; }
+    .success { color: #86efac; }
+    .hidden { display: none !important; }
+    .orders { display: grid; gap: 15px; }
+    .order {
+      padding: 18px;
+      border: 1px solid #34425e;
+      border-radius: 12px;
+      background: #0e1629;
+    }
+    .order-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .items { line-height: 1.8; color: #cbd5e1; }
+    .status-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 15px; }
+    select {
+      padding: 10px;
+      border-radius: 8px;
+      background: #121a2e;
+      border: 1px solid #34425e;
+      color: white;
+    }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    @media (max-width: 600px) {
+      header { padding: 18px; }
+      main { margin-top: 20px; }
+      .panel { padding: 17px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Smart Canteen</h1>
+      <div class="muted">Administrator dashboard</div>
+    </div>
+    <button id="logoutBtn" class="logout hidden" type="button">Log out</button>
+  </header>
+
+  <main>
+    <section id="loginPanel" class="panel login-panel">
+      <h2>Admin Login</h2>
+      <p class="muted">Sign in to manage canteen orders.</p>
+
+      <form id="loginForm">
+        <label for="username">Username</label>
+        <input id="username" name="username" autocomplete="username"
+               maxlength="50" required>
+
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password"
+               autocomplete="current-password" required>
+
+        <button class="primary" id="loginBtn" type="submit">Sign in</button>
+        <div id="loginMessage" class="message" role="status"></div>
+      </form>
+    </section>
+
+    <section id="dashboard" class="hidden">
+      <div class="panel">
+        <div class="order-top">
+          <div>
+            <h2>Orders</h2>
+            <p class="muted">View orders and update their status.</p>
+          </div>
+          <button id="refreshBtn" type="button">Refresh orders</button>
+        </div>
+        <div id="dashboardMessage" class="message" role="status"></div>
+      </div>
+      <div id="orders" class="orders"></div>
+    </section>
+  </main>
+
+  <script>
+    const API = "http://localhost:5000";
+    const TOKEN_KEY = "smartCanteenAdminToken";
+
+    const loginPanel = document.getElementById("loginPanel");
+    const loginForm = document.getElementById("loginForm");
+    const loginMessage = document.getElementById("loginMessage");
+    const loginBtn = document.getElementById("loginBtn");
+    const dashboard = document.getElementById("dashboard");
+    const dashboardMessage = document.getElementById("dashboardMessage");
+    const ordersContainer = document.getElementById("orders");
+    const logoutBtn = document.getElementById("logoutBtn");
+
+    let token = sessionStorage.getItem(TOKEN_KEY);
+
+    function showLogin(message = "") {
+      token = null;
+      sessionStorage.removeItem(TOKEN_KEY);
+      loginPanel.classList.remove("hidden");
+      dashboard.classList.add("hidden");
+      logoutBtn.classList.add("hidden");
+      loginMessage.textContent = message;
+      ordersContainer.replaceChildren();
+    }
+
+    function showDashboard() {
+      loginPanel.classList.add("hidden");
+      dashboard.classList.remove("hidden");
+      logoutBtn.classList.remove("hidden");
+    }
+
+    async function apiRequest(path, options = {}) {
+      const response = await fetch(API + path, {
+        ...options,
+        headers: {
+          ...(options.headers || {}),
+          Authorization: "Bearer " + token
+        }
+      });
+
+      if (response.status === 401 || response.status === 403) {
+        showLogin("Your session expired. Please sign in again.");
+        throw new Error("Your session has expired. Please sign in again.");
+      }
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.message || data.error || "Request failed.");
+      }
+
+      return data;
+    }
+
+    loginForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      loginMessage.textContent = "";
+      loginBtn.disabled = true;
+      loginBtn.textContent = "Signing in...";
+
+      try {
+        const response = await fetch(API + "/api/admin/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username: document.getElementById("username").value.trim(),
+            password: document.getElementById("password").value
+          })
+        });
+
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok || !data.token) {
+          throw new Error(data.message || data.error || "Login failed.");
+        }
+
+        token = data.token;
+        sessionStorage.setItem(TOKEN_KEY, token);
+        document.getElementById("password").value = "";
+        showDashboard();
+        await loadOrders();
+      } catch (error) {
+        showLogin(error.message || "Could not connect to the server.");
+      } finally {
+        loginBtn.disabled = false;
+        loginBtn.textContent = "Sign in";
+      }
+    });
+
+    async function loadOrders() {
+      dashboardMessage.textContent = "Loading orders...";
+      ordersContainer.replaceChildren();
+
+      try {
+        const data = await apiRequest("/api/admin/orders");
+        const orders = Array.isArray(data) ? data : data.orders;
+
+        if (!Array.isArray(orders)) {
+          throw new Error("Unexpected order response from the server.");
+        }
+
+        dashboardMessage.textContent = "";
+
+        if (orders.length === 0) {
+          dashboardMessage.textContent = "No orders found yet.";
+          dashboardMessage.classList.add("success");
+          return;
+        }
+
+        orders.forEach((order) => {
+          const card = document.createElement("article");
+          card.className = "order";
+
+          const top = document.createElement("div");
+          top.className = "order-top";
+
+          const heading = document.createElement("div");
+          const title = document.createElement("h3");
+          title.textContent = "Order #" + order.id;
+          const customer = document.createElement("p");
+          customer.className = "muted";
+          customer.textContent =
+            "Customer: " + (order.customer_name || order.customer || "N/A");
+          heading.append(title, customer);
+
+          const status = document.createElement("strong");
+          status.textContent = "Status: " + (order.status || "Pending");
+          top.append(heading, status);
+          card.append(top);
+
+          if (order.items) {
+            const items = document.createElement("p");
+            items.className = "items";
+            items.textContent = "Items: " + (
+              typeof order.items === "string"
+                ? order.items
+                : JSON.stringify(order.items)
+            );
+            card.append(items);
+          }
+
+          if (order.total_amount != null || order.total != null) {
+            const total = document.createElement("p");
+            total.textContent = "Total: ₹" + (order.total_amount ?? order.total);
+            card.append(total);
+          }
+
+          const row = document.createElement("div");
+          row.className = "status-row";
+
+          const select = document.createElement("select");
+          ["Pending", "Preparing", "Ready", "Completed", "Cancelled"]
+            .forEach((value) => {
+              const option = document.createElement("option");
+              option.value = value;
+              option.textContent = value;
+              if (String(order.status || "Pending").toLowerCase() === value.toLowerCase()) {
+                option.selected = true;
+              }
+              select.append(option);
+            });
+
+          const update = document.createElement("button");
+          update.type = "button";
+          update.textContent = "Update status";
+          update.addEventListener("click", async () => {
+            update.disabled = true;
+            try {
+              await apiRequest("/api/admin/orders/" + encodeURIComponent(order.id) + "/status", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ status: select.value })
+              });
+              dashboardMessage.textContent = "Order status updated.";
+              dashboardMessage.classList.add("success");
+              await loadOrders();
+            } catch (error) {
+              dashboardMessage.textContent = error.message;
+              dashboardMessage.classList.remove("success");
+            } finally {
+              update.disabled = false;
+            }
+          });
+
+          row.append(select, update);
+          card.append(row);
+          ordersContainer.append(card);
+        });
+      } catch (error) {
+        dashboardMessage.textContent = error.message || "Unable to load orders.";
+        dashboardMessage.classList.remove("success");
+      }
+    }
+
+    document.getElementById("refreshBtn").addEventListener("click", loadOrders);
+
+    logoutBtn.addEventListener("click", () => {
+      showLogin("You have been logged out.");
+    });
+
+    if (token) {
+      showDashboard();
+      loadOrders();
+    } else {
+      showLogin();
+    }
+  </script>
+</body>
+</html>
