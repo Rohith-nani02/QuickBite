@@ -12,7 +12,6 @@ const db = require("./db");
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Validate the JWT secret before starting the server.
 if (
   !process.env.JWT_SECRET ||
   process.env.JWT_SECRET.length < 32 ||
@@ -23,18 +22,19 @@ if (
   process.exit(1);
 }
 
-// Allow the local frontend development addresses.
+// CORS configuration
 app.use(
-  origin: [
-  "http://localhost:3000",
-  "http://127.0.0.1:3000",
-  "http://10.136.59.13:3000",
-  "http://localhost:5500",
-  "http://127.0.0.1:5500",
-  "http://localhost:5501",
-  "http://127.0.0.1:5501",
-  "https://quickbite-frontend-delta.vercel.app"
-],
+  cors({
+    origin: [
+      "http://localhost:3000",
+      "http://127.0.0.1:3000",
+      "http://10.136.59.13:3000",
+      "http://localhost:5500",
+      "http://127.0.0.1:5500",
+      "http://localhost:5501",
+      "http://127.0.0.1:5501",
+      "https://quickbite-frontend-delta.vercel.app"
+    ],
     methods: ["GET", "POST", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"]
   })
@@ -47,7 +47,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Promise wrapper for the callback-based MySQL connection.
+// MySQL query wrapper
 function query(sql, params = []) {
   return new Promise((resolve, reject) => {
     db.query(sql, params, (err, results) => {
@@ -57,7 +57,7 @@ function query(sql, params = []) {
   });
 }
 
-// Initialize Razorpay using credentials from backend/.env.
+// Razorpay configuration
 function getRazorpay() {
   const keyId = process.env.RAZORPAY_KEY_ID;
   const keySecret = process.env.RAZORPAY_KEY_SECRET;
@@ -74,7 +74,7 @@ function getRazorpay() {
   });
 }
 
-// Validate incoming order details.
+// Validate order details
 function validateOrderInput(customerName, items) {
   if (
     typeof customerName !== "string" ||
@@ -98,7 +98,7 @@ function validateOrderInput(customerName, items) {
   );
 }
 
-// Calculate prices using the database, never the browser's total.
+// Calculate prices from the database
 async function getPricedItems(items) {
   const quantities = new Map();
 
@@ -173,7 +173,7 @@ async function getPricedItems(items) {
   return { pricedItems, totalPaise };
 }
 
-// Save the order and its individual items.
+// Save order and order items
 async function saveOrder(customerName, pricedItems, totalPaise, method) {
   const totalAmount = (totalPaise / 100).toFixed(2);
 
@@ -213,7 +213,7 @@ async function saveOrder(customerName, pricedItems, totalPaise, method) {
   return orderId;
 }
 
-// Health check.
+// Health check
 app.get("/api/health", (req, res) => {
   res.json({
     success: true,
@@ -221,7 +221,7 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// Fetch the menu.
+// Fetch menu
 app.get("/api/menu", async (req, res) => {
   try {
     const results = await query(
@@ -238,7 +238,7 @@ app.get("/api/menu", async (req, res) => {
   }
 });
 
-// Pay at Counter.
+// Pay at Counter
 app.post("/api/orders", async (req, res) => {
   const { customer_name, items } = req.body || {};
 
@@ -275,7 +275,7 @@ app.post("/api/orders", async (req, res) => {
   }
 });
 
-// Create a Razorpay order for online payment.
+// Create Razorpay order
 app.post("/api/payments/create-order", async (req, res) => {
   const { customer_name, items } = req.body || {};
 
@@ -322,7 +322,6 @@ app.post("/api/payments/create-order", async (req, res) => {
       customerName: customer_name.trim()
     });
   } catch (error) {
-    // Log the underlying error locally to help diagnose failures.
     console.error("Online order creation failed:", error);
 
     if (orderId) {
@@ -340,7 +339,7 @@ app.post("/api/payments/create-order", async (req, res) => {
   }
 });
 
-// Verify a payment after Razorpay Checkout completes.
+// Verify Razorpay payment
 app.post("/api/payments/verify", async (req, res) => {
   const {
     orderId,
@@ -385,7 +384,6 @@ app.post("/api/payments/verify", async (req, res) => {
       });
     }
 
-    // Verify the signature using the secret key on the server only.
     const expectedSignature = crypto
       .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
       .update(`${razorpay_order_id}|${razorpay_payment_id}`)
@@ -405,7 +403,6 @@ app.post("/api/payments/verify", async (req, res) => {
       });
     }
 
-    // Verify payment details with Razorpay.
     const payment = await razorpay.payments.fetch(razorpay_payment_id);
 
     if (payment.order_id !== razorpay_order_id) {
@@ -443,7 +440,7 @@ app.post("/api/payments/verify", async (req, res) => {
   }
 });
 
-// Admin login.
+// Admin login
 app.post("/api/admin/login", async (req, res) => {
   const { username, password } = req.body || {};
 
@@ -474,6 +471,7 @@ app.post("/api/admin/login", async (req, res) => {
     }
 
     const admin = results[0];
+
     const matches = await bcrypt.compare(
       password,
       admin.password_hash
@@ -509,7 +507,7 @@ app.post("/api/admin/login", async (req, res) => {
   }
 });
 
-// Middleware protecting admin-only endpoints.
+// Admin authentication middleware
 function requireAdmin(req, res, next) {
   const authorization = req.headers.authorization || "";
   const parts = authorization.split(" ");
@@ -545,7 +543,7 @@ function requireAdmin(req, res, next) {
   }
 }
 
-// Admin order dashboard.
+// Admin orders dashboard
 app.get("/api/admin/orders", requireAdmin, async (req, res) => {
   try {
     const results = await query(`
@@ -579,7 +577,7 @@ app.get("/api/admin/orders", requireAdmin, async (req, res) => {
   }
 });
 
-// Update an order's status.
+// Update order status
 app.patch(
   "/api/admin/orders/:id/status",
   requireAdmin,
@@ -654,7 +652,7 @@ app.patch(
   }
 );
 
-// Handle malformed JSON and unexpected Express errors.
+// Error handler
 app.use((err, req, res, next) => {
   console.error("Request processing error:", err.message);
 
@@ -667,7 +665,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start the server.
+// Start server
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Smart Canteen server running on port ${PORT}`);
+  console.log(`QuickBite server running on port ${PORT}`);
 });
