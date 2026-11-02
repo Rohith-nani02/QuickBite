@@ -2,8 +2,9 @@
 require("dotenv").config();
 
 const mysql = require("mysql2");
+const fs = require("fs");
 
-const isProduction = process.env.NODE_ENV === "production";
+const isAiven = Boolean(process.env.MYSQLHOST?.includes("aivencloud.com"));
 
 const config = {
   host: process.env.MYSQLHOST || process.env.DB_HOST || "localhost",
@@ -16,16 +17,17 @@ const config = {
   queueLimit: 0
 };
 
-if (isProduction) {
-  const required = ["MYSQLHOST", "MYSQLUSER", "MYSQLPASSWORD", "MYSQLDATABASE"];
+if (isAiven) {
+  const caPath = process.env.MYSQL_CA_PATH;
 
-  const missing = required.filter((key) => !process.env[key]);
-
-  if (missing.length > 0) {
-    throw new Error(
-      `Missing Railway MySQL environment variables: ${missing.join(", ")}`
-    );
+  if (!caPath || !fs.existsSync(caPath)) {
+    throw new Error("Aiven CA certificate file is missing.");
   }
+
+  config.ssl = {
+    ca: fs.readFileSync(caPath, "utf8"),
+    rejectUnauthorized: true
+  };
 }
 
 const db = mysql.createPool(config);
@@ -37,12 +39,7 @@ db.getConnection((err, connection) => {
   }
 
   console.log("QuickBite MySQL connection established successfully!");
-
   connection.release();
-});
-
-db.on("error", (err) => {
-  console.error("MySQL pool error:", err.message);
 });
 
 module.exports = db;
