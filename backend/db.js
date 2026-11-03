@@ -18,7 +18,8 @@ const config = {
 };
 
 if (isAiven) {
-  const caPath = process.env.MYSQL_CA_PATH;
+ const path = require("path");
+const caPath = path.resolve(__dirname, process.env.MYSQL_CA_PATH || "aiven-ca.pem");
 
   if (!caPath || !fs.existsSync(caPath)) {
     throw new Error("Aiven CA certificate file is missing.");

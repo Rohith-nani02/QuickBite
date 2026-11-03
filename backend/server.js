@@ -440,6 +440,160 @@ app.post("/api/payments/verify", async (req, res) => {
   }
 });
 
+app.post("/api/students/login", async (req, res) => {
+  const { student_id, password } = req.body || {};
+
+  if (
+    typeof student_id !== "string" ||
+    typeof password !== "string" ||
+    !student_id.trim() ||
+    !password
+  ) {
+    return res.status(400).json({
+      message: "Enter student ID and password."
+    });
+  }
+  app.post(
+  "/api/students/change-password",
+  requireStudent,
+  async (req, res) => {
+    const { currentPassword, newPassword } = req.body || {};
+
+    if (
+      typeof currentPassword !== "string" ||
+      typeof newPassword !== "string" ||
+      newPassword.length < 8 ||
+      newPassword.length > 72
+    ) {
+      return res.status(400).json({
+        message: "New password must be between 8 and 72 characters."
+      });
+    }
+
+    try {
+      const results = await query(
+        `SELECT id, password_hash, must_change_password
+         FROM students
+         WHERE id = ?
+         LIMIT 1`,
+        [req.student.studentId]
+      );
+
+      if (results.length === 0) {
+        return res.status(404).json({
+          message: "Student account not found."
+        });
+      }
+
+      const student = results[0];
+
+      const matches = await bcrypt.compare(
+        currentPassword,
+        student.password_hash
+      );
+
+      if (!matches) {
+        return res.status(401).json({
+          message: "Current password is incorrect."
+        });
+      }
+
+      const newHash = await bcrypt.hash(newPassword, 10);
+
+      await query(
+        `UPDATE students
+         SET password_hash = ?, must_change_password = FALSE
+         WHERE id = ?`,
+        [newHash, student.id]
+      );
+
+      const token = jwt.sign(
+        {
+          studentId: student.id,
+          student_id: req.student.student_id,
+          role: "student",
+          mustChangePassword: false
+        },
+        process.env.JWT_SECRET,
+        { expiresIn: "2h" }
+      );
+
+      return res.json({
+        success: true,
+        message: "Password changed successfully.",
+        token
+      });
+    } catch (error) {
+      console.error("Student password change failed:", error.message);
+
+      return res.status(500).json({
+        message: "Could not change password."
+      });
+    }
+  }
+);
+
+  try {
+    const results = await query(
+      `SELECT id, student_id, password_hash, must_change_password
+       FROM students
+       WHERE student_id = ?
+       LIMIT 1`,
+      [student_id.trim().toUpperCase()]
+    );
+
+    if (results.length === 0) {
+      return res.status(401).json({
+        message: "Invalid student ID or password."
+      });
+    }
+
+    const student = results[0];
+
+    const matches = await bcrypt.compare(
+      password,
+      student.password_hash
+    );
+
+    if (!matches) {
+      return res.status(401).json({
+        message: "Invalid student ID or password."
+      });
+    }
+
+    const mustChangePassword = Boolean(
+      student.must_change_password
+    );
+
+    const token = jwt.sign(
+      {
+        studentId: student.id,
+        student_id: student.student_id,
+        role: "student",
+        mustChangePassword
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "2h" }
+    );
+
+    return res.json({
+      success: true,
+      message: "Student login successful.",
+      token,
+      student: {
+        student_id: student.student_id,
+        mustChangePassword
+      }
+    });
+  } catch (error) {
+    console.error("Student login failed:", error.message);
+
+    return res.status(500).json({
+      message: "Student login service unavailable."
+    });
+  }
+});
+
 // Admin login
 app.post("/api/admin/login", async (req, res) => {
   const { username, password } = req.body || {};
@@ -506,6 +660,44 @@ app.post("/api/admin/login", async (req, res) => {
     });
   }
 });
+
+function requireStudent(req, res, next) {
+  const authorization = req.headers.authorization || "";
+  const parts = authorization.split(" ");
+
+  if (
+    parts.length !== 2 ||
+    parts[0] !== "Bearer" ||
+    !parts[1]
+  ) {
+    return res.status(401).json({
+      message: "Please sign in as a student."
+    });
+  }
+
+  try {
+    const decoded = jwt.verify(
+      parts[1],
+      process.env.JWT_SECRET
+    );
+
+    if (
+      decoded.role !== "student" ||
+      !decoded.studentId
+    ) {
+      return res.status(403).json({
+        message: "Student access required."
+      });
+    }
+
+    req.student = decoded;
+    return next();
+  } catch (error) {
+    return res.status(401).json({
+      message: "Your session has expired. Please sign in again."
+    });
+  }
+}
 
 // Admin authentication middleware
 function requireAdmin(req, res, next) {

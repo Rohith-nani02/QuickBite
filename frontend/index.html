@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,6 +7,7 @@
 <title>QuickBite | Order Smart. Eat Fresh.</title>
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
 <style>
 :root {
   --bg:#f5f7fa;
@@ -133,6 +133,7 @@ footer strong{color:white}
 @media(max-width:390px){.menu-grid{grid-template-columns:1fr}.food-image{height:160px}}
 </style>
 </head>
+
 <body>
 
 <header class="topbar">
@@ -248,10 +249,20 @@ footer strong{color:white}
 <div class="modal-backdrop hidden" id="passwordModal">
   <div class="modal">
     <h2>Create your password</h2>
-    <p>For your security, you must change your temporary password before placing orders.</p>
+    <p>For your security, change your temporary password before placing orders.</p>
     <form onsubmit="changePassword(event)">
-      <div class="field"><label>NEW PASSWORD</label><input id="newPassword" type="password" minlength="8" required autocomplete="new-password" placeholder="At least 8 characters"></div>
-      <div class="field"><label>CONFIRM PASSWORD</label><input id="confirmPassword" type="password" minlength="8" required autocomplete="new-password" placeholder="Confirm new password"></div>
+      <div class="field">
+        <label>CURRENT PASSWORD</label>
+        <input id="currentPassword" type="password" required autocomplete="current-password" placeholder="Enter your current password">
+      </div>
+      <div class="field">
+        <label>NEW PASSWORD</label>
+        <input id="newPassword" type="password" minlength="8" maxlength="72" required autocomplete="new-password" placeholder="At least 8 characters">
+      </div>
+      <div class="field">
+        <label>CONFIRM PASSWORD</label>
+        <input id="confirmPassword" type="password" minlength="8" maxlength="72" required autocomplete="new-password" placeholder="Confirm new password">
+      </div>
       <button class="modal-submit" id="passwordSubmit">Save new password</button>
     </form>
     <div id="passwordMessage"></div>
@@ -270,6 +281,7 @@ footer strong{color:white}
 
 <script>
 const API_URL = "https://quickbite-juvh.onrender.com";
+
 let token = sessionStorage.getItem("quickbite_token") || "";
 let student = null;
 let menuItems = [];
@@ -277,13 +289,26 @@ let cart = [];
 let activeCategory = "All";
 let processing = false;
 
-const emojis = {Meals:"🍛",Snacks:"🥪",Drinks:"☕",Beverages:"🥤",Desserts:"🍰"};
+const emojis = {
+  Meals:"🍛",
+  Snacks:"🥪",
+  Drinks:"☕",
+  Beverages:"🥤",
+  Desserts:"🍰"
+};
 
 function api(path,options={}) {
   const headers = {...(options.headers||{})};
-  if(token) headers.Authorization = `Bearer ${token}`;
-  if(options.body) headers["Content-Type"] = "application/json";
- return fetch(`${API_URL}${path}`,{...options,headers});
+
+  if(token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  if(options.body) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  return fetch(`${API_URL}${path}`,{...options,headers});
 }
 
 function message(id,text,type="info") {
@@ -307,36 +332,68 @@ function closeModal(id) {
 }
 
 function showSection(id) {
-  if(id==="dashboardSection"&&!token){openLogin();return;}
+  if(id==="dashboardSection"&&!token) {
+    openLogin();
+    return;
+  }
+
   document.getElementById("menuSection").classList.toggle("hidden",id!=="menuSection");
   document.getElementById("dashboardSection").classList.toggle("hidden",id!=="dashboardSection");
-  if(id==="dashboardSection")loadDashboard();
+
+  if(id==="dashboardSection") {
+    loadDashboard();
+  }
+
   window.scrollTo({top:0,behavior:"smooth"});
 }
 
 async function login(event) {
   event.preventDefault();
+
   const button=document.getElementById("loginSubmit");
   button.disabled=true;
   button.textContent="Signing in...";
+
   const id=document.getElementById("loginId").value.trim();
   const password=document.getElementById("loginPassword").value;
+
   try {
-    const response=await api("/api/auth/login",{method:"POST",body:JSON.stringify({student_id:id,password})});
+    const response=await api("/api/students/login",{
+      method:"POST",
+      body:JSON.stringify({
+        student_id:id,
+        password
+      })
+    });
+
     const result=await response.json();
-    if(!response.ok||!result.success)throw new Error(result.message||"Login failed.");
-    if(!result.token)throw new Error("The server did not return a login token.");
+
+    if(!response.ok||!result.success) {
+      throw new Error(result.message||"Login failed.");
+    }
+
+    if(!result.token) {
+      throw new Error("The server did not return a login token.");
+    }
+
     token=result.token;
     sessionStorage.setItem("quickbite_token",token);
     student=result.student||null;
+
     closeModal("loginModal");
     updateNavigation();
-    if(result.mustChangePassword){
+
+    if(result.student?.mustChangePassword) {
+      document.getElementById("currentPassword").value="";
+      document.getElementById("newPassword").value="";
+      document.getElementById("confirmPassword").value="";
+      clearMessage("passwordMessage");
       document.getElementById("passwordModal").classList.remove("hidden");
-    }else{
+    } else {
       await loadDashboard();
       showSection("dashboardSection");
     }
+
   } catch(error) {
     message("loginMessage",error.message,"error");
   } finally {
@@ -347,25 +404,71 @@ async function login(event) {
 
 async function changePassword(event) {
   event.preventDefault();
+
+  const currentPassword=document.getElementById("currentPassword").value;
   const password=document.getElementById("newPassword").value;
   const confirm=document.getElementById("confirmPassword").value;
-  if(password.length<8){message("passwordMessage","Password must contain at least 8 characters.","error");return;}
-  if(password!==confirm){message("passwordMessage","Passwords do not match.","error");return;}
+
+  if(password.length<8||password.length>72) {
+    message("passwordMessage","Password must contain between 8 and 72 characters.","error");
+    return;
+  }
+
+  if(password!==confirm) {
+    message("passwordMessage","Passwords do not match.","error");
+    return;
+  }
+
+  if(currentPassword===password) {
+    message("passwordMessage","Choose a password different from your current password.","error");
+    return;
+  }
+
   const button=document.getElementById("passwordSubmit");
   button.disabled=true;
-  try{
-    const response=await api("/api/auth/change-password",{method:"POST",body:JSON.stringify({newPassword:password})});
+  button.textContent="Saving...";
+
+  try {
+    const response=await api("/api/students/change-password",{
+      method:"POST",
+      body:JSON.stringify({
+        currentPassword,
+        newPassword:password
+      })
+    });
+
     const result=await response.json();
-    if(!response.ok||!result.success)throw new Error(result.message||"Password update failed.");
+
+    if(!response.ok||!result.success) {
+      throw new Error(result.message||"Password update failed.");
+    }
+
+    if(!result.token) {
+      throw new Error("The server did not return a new login token.");
+    }
+
+    token=result.token;
+    sessionStorage.setItem("quickbite_token",token);
+
+    student={
+      ...student,
+      mustChangePassword:false
+    };
+
     closeModal("passwordModal");
+
+    document.getElementById("currentPassword").value="";
     document.getElementById("newPassword").value="";
     document.getElementById("confirmPassword").value="";
+
     await loadDashboard();
     showSection("dashboardSection");
-  }catch(error){
+
+  } catch(error) {
     message("passwordMessage",error.message,"error");
-  }finally{
+  } finally {
     button.disabled=false;
+    button.textContent="Save new password";
   }
 }
 
@@ -378,7 +481,9 @@ function updateNavigation() {
 function logout() {
   token="";
   student=null;
+
   sessionStorage.removeItem("quickbite_token");
+
   updateNavigation();
   showSection("menuSection");
 }
@@ -386,31 +491,46 @@ function logout() {
 function categoriesList() {
   const values=["All",...new Set(menuItems.map(x=>x.category).filter(Boolean))];
   const container=document.getElementById("categories");
+
   container.innerHTML="";
+
   values.forEach(category=>{
     const button=document.createElement("button");
+
     button.className="category-btn"+(activeCategory===category?" active":"");
     button.textContent=category;
+
     button.onclick=()=>{
       activeCategory=category;
       categoriesList();
       renderMenu();
     };
+
     container.appendChild(button);
   });
 }
 
 async function loadMenu() {
-  try{
+  try {
     const response=await api("/api/menu");
     const result=await response.json();
-    if(!response.ok)throw new Error(result.message||"Menu unavailable.");
+
+    if(!response.ok) {
+      throw new Error(result.message||"Menu unavailable.");
+    }
+
     menuItems=Array.isArray(result)?result:(result.items||[]);
+
     categoriesList();
     renderMenu();
-    document.getElementById("menuMessage").textContent=menuItems.length?"":"No food items are available right now.";
-  }catch(error){
-    document.getElementById("menuMessage").textContent="Unable to load the menu. Check the backend URL and server.";
+
+    document.getElementById("menuMessage").textContent=
+      menuItems.length?"":"No food items are available right now.";
+
+  } catch(error) {
+    document.getElementById("menuMessage").textContent=
+      "Unable to load the menu. Check the backend URL and server.";
+
     console.error(error);
   }
 }
@@ -418,46 +538,67 @@ async function loadMenu() {
 function renderMenu() {
   const grid=document.getElementById("menuGrid");
   grid.innerHTML="";
+
   const search=document.getElementById("searchInput").value.toLowerCase().trim();
+
   const items=menuItems.filter(item=>
     Number(item.is_available)===1 &&
     (activeCategory==="All"||item.category===activeCategory) &&
     (item.name||"").toLowerCase().includes(search)
   );
-  if(!items.length){
+
+  if(!items.length) {
     grid.innerHTML='<div class="empty-state">No matching food items found.</div>';
     return;
   }
+
   items.forEach(item=>{
     const card=document.createElement("article");
     card.className="food-card";
+
     const image=document.createElement("div");
     image.className="food-image";
-    if(item.image_url){
+
+    if(item.image_url) {
       const img=document.createElement("img");
       img.src=item.image_url;
       img.alt=item.name||"Food";
-      img.onerror=()=>{img.remove();image.textContent=emojis[item.category]||"🍽️";};
+
+      img.onerror=()=>{
+        img.remove();
+        image.textContent=emojis[item.category]||"🍽️";
+      };
+
       image.appendChild(img);
-    }else image.textContent=emojis[item.category]||"🍽️";
+    } else {
+      image.textContent=emojis[item.category]||"🍽️";
+    }
+
     const info=document.createElement("div");
     info.className="food-info";
+
     const category=document.createElement("span");
     category.className="food-category";
     category.textContent=item.category||"Food";
+
     const name=document.createElement("h3");
     name.textContent=item.name;
+
     const desc=document.createElement("p");
     desc.textContent=item.description||"Freshly prepared for you.";
+
     const bottom=document.createElement("div");
     bottom.className="food-bottom";
+
     const price=document.createElement("span");
     price.className="food-price";
     price.textContent="₹"+Number(item.price).toFixed(2);
+
     const add=document.createElement("button");
     add.className="add-btn";
     add.textContent="ADD +";
     add.onclick=()=>addToCart(item.id);
+
     bottom.append(price,add);
     info.append(category,name,desc,bottom);
     card.append(image,info);
@@ -467,68 +608,110 @@ function renderMenu() {
 
 function addToCart(id) {
   if(processing)return;
+
   const item=menuItems.find(x=>Number(x.id)===Number(id));
   if(!item)return;
+
   const existing=cart.find(x=>Number(x.id)===Number(id));
-  if(existing)existing.quantity++;
-  else cart.push({id:Number(item.id),name:item.name,price:Number(item.price),quantity:1});
+
+  if(existing) {
+    existing.quantity++;
+  } else {
+    cart.push({
+      id:Number(item.id),
+      name:item.name,
+      price:Number(item.price),
+      quantity:1
+    });
+  }
+
   renderCart();
 }
 
 function changeQuantity(id,amount) {
   const item=cart.find(x=>x.id===Number(id));
   if(!item)return;
+
   item.quantity+=amount;
-  if(item.quantity<=0)cart=cart.filter(x=>x.id!==Number(id));
+
+  if(item.quantity<=0) {
+    cart=cart.filter(x=>x.id!==Number(id));
+  }
+
   renderCart();
 }
 
 function renderCart() {
   const container=document.getElementById("cartItems");
   container.innerHTML="";
-  let count=0,total=0;
+
+  let count=0;
+  let total=0;
+
   cart.forEach(item=>{
     count+=item.quantity;
     total+=item.price*item.quantity;
+
     const row=document.createElement("div");
     row.className="cart-row";
+
     const details=document.createElement("div");
+
     const name=document.createElement("strong");
     name.textContent=item.name;
+
     const sub=document.createElement("small");
     sub.textContent="₹"+(item.price*item.quantity).toFixed(2);
+
     details.append(name,sub);
+
     const qty=document.createElement("div");
     qty.className="qty";
+
     const minus=document.createElement("button");
     minus.textContent="−";
     minus.onclick=()=>changeQuantity(item.id,-1);
+
     const number=document.createElement("span");
     number.textContent=item.quantity;
+
     const plus=document.createElement("button");
     plus.textContent="+";
     plus.onclick=()=>changeQuantity(item.id,1);
+
     qty.append(minus,number,plus);
     row.append(details,qty);
     container.appendChild(row);
   });
-  if(!cart.length)container.innerHTML='<p style="color:var(--muted);padding:15px 0">Your cart is empty. Explore the menu!</p>';
+
+  if(!cart.length) {
+    container.innerHTML='<p style="color:var(--muted);padding:15px 0">Your cart is empty. Explore the menu!</p>';
+  }
+
   document.getElementById("cartCount").textContent=count;
   document.getElementById("cartTotal").textContent=total.toFixed(2);
 }
 
 function toggleCart() {
-  if(!token){openLogin();return;}
+  if(!token) {
+    openLogin();
+    return;
+  }
+
   const section=document.getElementById("cartSection");
   section.classList.toggle("hidden");
-  if(!section.classList.contains("hidden")){
+
+  if(!section.classList.contains("hidden")) {
     renderCart();
     section.scrollIntoView({behavior:"smooth"});
   }
 }
 
 function orderItems() {
-  return cart.map(item=>({id:item.id,quantity:item.quantity}));
+  return cart.map(item=>({
+    id:item.id,
+    quantity:item.quantity
+  }));
 }
 
 function clearCart() {
@@ -538,32 +721,79 @@ function clearCart() {
 }
 
 async function placeCounterOrder() {
-  if(!token){openLogin();return;}
-  if(!cart.length){message("cartMessage","Your cart is empty.","error");return;}
+  if(!token) {
+    openLogin();
+    return;
+  }
+
+  if(!cart.length) {
+    message("cartMessage","Your cart is empty.","error");
+    return;
+  }
+
   if(processing)return;
   processing=true;
-  try{
-    const response=await api("/api/orders",{method:"POST",body:JSON.stringify({items:orderItems()})});
+
+  try {
+    const response=await api("/api/orders",{
+      method:"POST",
+      body:JSON.stringify({items:orderItems()})
+    });
+
     const result=await response.json();
-    if(!response.ok||!result.success)throw new Error(result.message||"Order could not be placed.");
+
+    if(!response.ok||!result.success) {
+      throw new Error(result.message||"Order could not be placed.");
+    }
+
     clearCart();
-    message("cartMessage",`Order #${result.orderId} placed. Please complete payment at the counter.`,"success");
+
+    message(
+      "cartMessage",
+      `Order #${result.orderId} placed. Please complete payment at the counter.`,
+      "success"
+    );
+
     await loadDashboard();
-  }catch(error){
+
+  } catch(error) {
     message("cartMessage",error.message,"error");
-  }finally{processing=false;}
+  } finally {
+    processing=false;
+  }
 }
 
 async function payOnline() {
-  if(!token){openLogin();return;}
-  if(!cart.length){message("cartMessage","Your cart is empty.","error");return;}
-  if(typeof Razorpay!=="function"){message("cartMessage","Razorpay could not load. Check your internet connection.","error");return;}
+  if(!token) {
+    openLogin();
+    return;
+  }
+
+  if(!cart.length) {
+    message("cartMessage","Your cart is empty.","error");
+    return;
+  }
+
+  if(typeof Razorpay!=="function") {
+    message("cartMessage","Razorpay could not load. Check your internet connection.","error");
+    return;
+  }
+
   if(processing)return;
   processing=true;
-  try{
-    const response=await api("/api/payments/create-order",{method:"POST",body:JSON.stringify({items:orderItems()})});
+
+  try {
+    const response=await api("/api/payments/create-order",{
+      method:"POST",
+      body:JSON.stringify({items:orderItems()})
+    });
+
     const order=await response.json();
-    if(!response.ok||!order.success)throw new Error(order.message||"Unable to create payment.");
+
+    if(!response.ok||!order.success) {
+      throw new Error(order.message||"Unable to create payment.");
+    }
+
     const checkout=new Razorpay({
       key:order.keyId,
       amount:order.amount,
@@ -572,28 +802,61 @@ async function payOnline() {
       description:"Campus food order",
       order_id:order.razorpayOrderId,
       theme:{color:"#f97316"},
-      handler:async function(payment){
-        try{
-          const verify=await api("/api/payments/verify",{method:"POST",body:JSON.stringify({
-            orderId:order.orderId,
-            razorpay_order_id:payment.razorpay_order_id,
-            razorpay_payment_id:payment.razorpay_payment_id,
-            razorpay_signature:payment.razorpay_signature
-          })});
+
+      handler:async function(payment) {
+        try {
+          const verify=await api("/api/payments/verify",{
+            method:"POST",
+            body:JSON.stringify({
+              orderId:order.orderId,
+              razorpay_order_id:payment.razorpay_order_id,
+              razorpay_payment_id:payment.razorpay_payment_id,
+              razorpay_signature:payment.razorpay_signature
+            })
+          });
+
           const result=await verify.json();
-          if(!verify.ok||!result.success)throw new Error(result.message||"Payment verification failed.");
+
+          if(!verify.ok||!result.success) {
+            throw new Error(result.message||"Payment verification failed.");
+          }
+
           clearCart();
-          message("cartMessage","Payment verified successfully. Your order is confirmed.","success");
+
+          message(
+            "cartMessage",
+            "Payment verified successfully. Your order is confirmed.",
+            "success"
+          );
+
           await loadDashboard();
-        }catch(error){
-          message("cartMessage",`Payment verification needs attention. Contact the canteen admin with order ID ${order.orderId}. ${error.message}`,"error");
-        }finally{processing=false;}
+
+        } catch(error) {
+          message(
+            "cartMessage",
+            `Payment verification needs attention. Contact the canteen admin with order ID ${order.orderId}. ${error.message}`,
+            "error"
+          );
+        } finally {
+          processing=false;
+        }
       },
-      modal:{ondismiss:()=>{processing=false;}}
+
+      modal:{
+        ondismiss:()=>{
+          processing=false;
+        }
+      }
     });
-    checkout.on("payment.failed",()=>{processing=false;message("cartMessage","Payment was not completed. Check payment status before retrying.","error");});
+
+    checkout.on("payment.failed",()=>{
+      processing=false;
+      message("cartMessage","Payment was not completed. Check payment status before retrying.","error");
+    });
+
     checkout.open();
-  }catch(error){
+
+  } catch(error) {
     processing=false;
     message("cartMessage",error.message,"error");
   }
@@ -601,101 +864,166 @@ async function payOnline() {
 
 async function loadDashboard() {
   if(!token)return;
-  try{
+
+  try {
     const response=await api("/api/student/profile");
     const result=await response.json();
-    if(!response.ok||!result.success)throw new Error(result.message||"Could not load profile.");
+
+    if(!response.ok||!result.success) {
+      throw new Error(result.message||"Could not load profile.");
+    }
+
     student=result.student;
-    document.getElementById("profileName").textContent=student.name||student.full_name||"Student";
-    document.getElementById("profileId").textContent=student.student_id||student.username||"—";
-    await Promise.all([loadOrders(),loadPayments()]);
-  }catch(error){
+
+    document.getElementById("profileName").textContent=
+      student.name||student.full_name||"Student";
+
+    document.getElementById("profileId").textContent=
+      student.student_id||student.username||"—";
+
+    await Promise.all([
+      loadOrders(),
+      loadPayments()
+    ]);
+
+  } catch(error) {
     console.error("Dashboard error:",error);
-    if(error.message.toLowerCase().includes("token")||error.message.toLowerCase().includes("unauthorized")){
+
+    if(
+      error.message.toLowerCase().includes("token")||
+      error.message.toLowerCase().includes("unauthorized")
+    ) {
       logout();
     }
   }
 }
 
 async function loadOrders() {
-  try{
+  try {
     const response=await api("/api/student/orders");
     const result=await response.json();
-    if(!response.ok||!result.success)throw new Error(result.message||"Unable to load orders.");
+
+    if(!response.ok||!result.success) {
+      throw new Error(result.message||"Unable to load orders.");
+    }
+
     const orders=result.orders||[];
     const box=document.getElementById("orderHistory");
     box.innerHTML="";
-    if(!orders.length){box.textContent="You haven't placed any orders yet.";return;}
+
+    if(!orders.length) {
+      box.textContent="You haven't placed any orders yet.";
+      return;
+    }
+
     orders.forEach(order=>{
       const row=document.createElement("div");
       row.className="order-row";
+
       const details=document.createElement("div");
+
       const title=document.createElement("strong");
       title.textContent="Order #"+order.id;
+
       const sub=document.createElement("small");
       sub.style.display="block";
       sub.style.color="var(--muted)";
       sub.style.marginTop="6px";
       sub.textContent=`₹${Number(order.total_amount).toFixed(2)} · ${order.payment_status||"Payment pending"}`;
+
       details.append(title,sub);
+
       const status=document.createElement("span");
       status.className="status";
       status.textContent=order.status||"Pending";
+
       row.append(details,status);
-      if(order.pickup_token){
+
+      if(order.pickup_token) {
         const qr=document.createElement("button");
         qr.className="add-btn";
         qr.textContent="View pickup QR";
         qr.onclick=()=>showQR(order);
         row.append(qr);
       }
+
       box.appendChild(row);
     });
-  }catch(error){document.getElementById("orderHistory").textContent=error.message;}
+
+  } catch(error) {
+    document.getElementById("orderHistory").textContent=error.message;
+  }
 }
 
 async function loadPayments() {
-  try{
+  try {
     const response=await api("/api/student/payments");
     const result=await response.json();
-    if(!response.ok||!result.success)throw new Error(result.message||"Unable to load payments.");
+
+    if(!response.ok||!result.success) {
+      throw new Error(result.message||"Unable to load payments.");
+    }
+
     const box=document.getElementById("paymentHistory");
     box.innerHTML="";
+
     const payments=result.payments||[];
-    if(!payments.length){box.textContent="No payment records yet.";return;}
+
+    if(!payments.length) {
+      box.textContent="No payment records yet.";
+      return;
+    }
+
     payments.forEach(payment=>{
       const row=document.createElement("div");
       row.className="order-row";
+
       const detail=document.createElement("strong");
       detail.textContent="Order #"+payment.order_id;
+
       const amount=document.createElement("span");
       amount.textContent="₹"+Number(payment.amount).toFixed(2)+" · "+(payment.status||"Pending");
+
       row.append(detail,amount);
       box.appendChild(row);
     });
-  }catch(error){document.getElementById("paymentHistory").textContent=error.message;}
+
+  } catch(error) {
+    document.getElementById("paymentHistory").textContent=error.message;
+  }
 }
 
 function showDashTab(id,button) {
-  ["profileTab","ordersTab","paymentsTab"].forEach(tab=>document.getElementById(tab).classList.toggle("hidden",tab!==id));
-  document.querySelectorAll(".side-menu button").forEach(x=>x.classList.remove("active"));
+  ["profileTab","ordersTab","paymentsTab"].forEach(tab=>{
+    document.getElementById(tab).classList.toggle("hidden",tab!==id);
+  });
+
+  document.querySelectorAll(".side-menu button").forEach(x=>{
+    x.classList.remove("active");
+  });
+
   button.classList.add("active");
 }
 
 function showQR(order) {
   if(!order.pickup_token)return;
+
   document.getElementById("qrBox").innerHTML="";
-  if(typeof QRCode==="function"){
+
+  if(typeof QRCode==="function") {
     new QRCode(document.getElementById("qrBox"),{
       text:order.pickup_token,
       width:190,
       height:190,
       correctLevel:QRCode.CorrectLevel.H
     });
-  }else{
+  } else {
     document.getElementById("qrBox").textContent="QR library unavailable.";
   }
-  document.getElementById("pickupDetails").textContent=`Order #${order.id} · ${order.status}`;
+
+  document.getElementById("pickupDetails").textContent=
+    `Order #${order.id} · ${order.status}`;
+
   document.getElementById("qrModal").classList.remove("hidden");
 }
 
