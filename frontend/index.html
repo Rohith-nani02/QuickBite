@@ -283,7 +283,7 @@ function api(path,options={}) {
   const headers = {...(options.headers||{})};
   if(token) headers.Authorization = `Bearer ${token}`;
   if(options.body) headers["Content-Type"] = "application/json";
-  return fetch(`${API_URL}${path}`,{...options,headers,credentials:"include"});
+ return fetch(`${API_URL}${path}`,{...options,headers});
 }
 
 function message(id,text,type="info") {
