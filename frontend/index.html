@@ -737,7 +737,10 @@ async function placeCounterOrder() {
   try {
     const response=await api("/api/orders",{
       method:"POST",
-      body:JSON.stringify({items:orderItems()})
+      body:JSON.stringify({
+  customer_name: student.name,
+  items: orderItems()
+})
     });
 
     const result=await response.json();
@@ -762,7 +765,6 @@ async function placeCounterOrder() {
     processing=false;
   }
 }
-
 async function payOnline() {
   if(!token) {
     openLogin();
@@ -782,13 +784,15 @@ async function payOnline() {
   if(processing)return;
   processing=true;
 
+  let order=null;
+
   try {
     const response=await api("/api/payments/create-order",{
       method:"POST",
       body:JSON.stringify({items:orderItems()})
     });
 
-    const order=await response.json();
+    order=await response.json();
 
     if(!response.ok||!order.success) {
       throw new Error(order.message||"Unable to create payment.");
@@ -834,7 +838,7 @@ async function payOnline() {
         } catch(error) {
           message(
             "cartMessage",
-            `Payment verification needs attention. Contact the canteen admin with order ID ${order.orderId}. ${error.message}`,
+            `Payment verification needs attention. Contact the canteen admin with order ID ${order.orderId||"unknown"}. ${error.message}`,
             "error"
           );
         } finally {
@@ -851,7 +855,11 @@ async function payOnline() {
 
     checkout.on("payment.failed",()=>{
       processing=false;
-      message("cartMessage","Payment was not completed. Check payment status before retrying.","error");
+      message(
+        "cartMessage",
+        "Payment was not completed. Check payment status before retrying.",
+        "error"
+      );
     });
 
     checkout.open();
@@ -861,7 +869,6 @@ async function payOnline() {
     message("cartMessage",error.message,"error");
   }
 }
-
 async function loadDashboard() {
   if(!token)return;
 
